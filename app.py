@@ -24,28 +24,38 @@ st.set_page_config(
 
 @st.cache_resource
 def load_model():
-    """Load the trained model and tokenizer"""
+    """Load the trained model and tokenizer from root directory files"""
     try:
-        model_path = "./bert-feedback-best"
-        
-        # Check if model directory exists
-        if not os.path.exists(model_path):
-            st.error(f"Model directory '{model_path}' not found!")
-            return None, None
-        
-        # Check for essential files
+        # Check for essential files in root directory
         essential_files = {
-            'pytorch_model.bin': 'Model weights file',
             'config.json': 'Model configuration file',
             'vocab.txt': 'Tokenizer vocabulary file',
             'tokenizer_config.json': 'Tokenizer configuration file'
         }
         
+        # Check for model weights (either .safetensors or .bin)
+        model_weight_files = {
+            'model.safetensors': 'Model weights (safetensors format)',
+            'pytorch_model.bin': 'Model weights (bin format)'
+        }
+        
         missing_files = []
+        
+        # Check essential files
         for file, description in essential_files.items():
-            file_path = os.path.join(model_path, file)
-            if not os.path.exists(file_path):
+            if not os.path.exists(file):
                 missing_files.append(f"{file} ({description})")
+        
+        # Check for at least one model weights file
+        found_weights = False
+        for file, description in model_weight_files.items():
+            if os.path.exists(file):
+                found_weights = True
+                st.info(f"Found model weights: {file}")
+                break
+        
+        if not found_weights:
+            missing_files.append("Model weights file (either model.safetensors or pytorch_model.bin)")
         
         if missing_files:
             st.error("Missing essential model files:")
@@ -54,17 +64,25 @@ def load_model():
             return None, None
         
         st.info("Loading tokenizer...")
-        tokenizer = AutoTokenizer.from_pretrained(model_path)
+        # Load tokenizer from current directory files
+        tokenizer = AutoTokenizer.from_pretrained(
+            ".",  # Current directory
+            local_files_only=True
+        )
         
         st.info("Loading model...")
-        model = AutoModelForSequenceClassification.from_pretrained(model_path)
+        # Load model from current directory files
+        model = AutoModelForSequenceClassification.from_pretrained(
+            ".",  # Current directory
+            local_files_only=True
+        )
         
         st.success("✅ Model loaded successfully!")
         return tokenizer, model
         
     except Exception as e:
         st.error(f"Error loading model: {str(e)}")
-        st.info("This might be due to version incompatibility. Check the requirements.txt")
+        st.info("This might be due to version incompatibility or missing files.")
         return None, None
 
 def predict_sentiment(texts, tokenizer, model, top_k=3):
@@ -143,29 +161,30 @@ def main():
         st.error("""
         ❌ Failed to load model. Please check:
         
-        1. **Model Files**: Ensure all model files are in the `bert-feedback-best` folder:
-           - `pytorch_model.bin` 
+        1. **Model Files**: Ensure all model files are in the ROOT directory:
            - `config.json`
            - `vocab.txt`
            - `tokenizer_config.json`
            - `special_tokens_map.json`
+           - `model.safetensors` OR `pytorch_model.bin`
         
         2. **Dependencies**: Make sure all packages are installed:
            ```bash
            pip install -r requirements.txt
            ```
         
-        3. **File Structure**:
+        3. **File Structure** (your current structure is CORRECT):
            ```
            your-app/
            ├── app.py
            ├── requirements.txt
-           └── bert-feedback-best/
-               ├── pytorch_model.bin
-               ├── config.json
-               ├── vocab.txt
-               ├── tokenizer_config.json
-               └── special_tokens_map.json
+           ├── config.json
+           ├── model.safetensors
+           ├── special_tokens_map.json
+           ├── tokenizer.json
+           ├── tokenizer_config.json
+           ├── training_args.bin
+           └── vocab.txt
            ```
         """)
         return
@@ -399,45 +418,23 @@ def model_info(tokenizer, model):
     
     # File check
     st.subheader("📁 File Check")
-    model_path = "./bert-feedback-best"
-    files_status = {}
     
     files_to_check = {
-        'pytorch_model.bin': 'Model weights',
         'config.json': 'Model configuration',
         'vocab.txt': 'Tokenizer vocabulary',
         'tokenizer_config.json': 'Tokenizer configuration',
-        'special_tokens_map.json': 'Special tokens mapping'
+        'special_tokens_map.json': 'Special tokens mapping',
+        'tokenizer.json': 'Tokenizer file',
+        'model.safetensors': 'Model weights (safetensors)',
+        'training_args.bin': 'Training arguments'
     }
     
     for file, description in files_to_check.items():
-        file_path = os.path.join(model_path, file)
-        if os.path.exists(file_path):
-            file_size = os.path.getsize(file_path) / (1024 * 1024)  # MB
-            files_status[file] = f"✅ Found ({file_size:.1f} MB) - {description}"
+        if os.path.exists(file):
+            file_size = os.path.getsize(file) / (1024 * 1024)  # MB
+            st.success(f"✅ {file} ({file_size:.1f} MB) - {description}")
         else:
-            files_status[file] = f"❌ Missing - {description}"
-    
-    for file, status in files_status.items():
-        st.write(status)
-    
-    # Example predictions
-    st.subheader("🚀 Test the Model")
-    example_texts = [
-        "The product is excellent and delivery was super fast!",
-        "The item was okay, nothing special.",
-        "Terrible quality and poor customer service."
-    ]
-    
-    for text in example_texts:
-        if st.button(f"Test: '{text}'", key=text):
-            with st.spinner("Predicting..."):
-                results = predict_sentiment([text], tokenizer, model)
-                if results:
-                    result = results[0]
-                    st.write(f"**Prediction:** {result['predicted_label']}")
-                    st.write(f"**Confidence:** {result['confidence']:.2%}")
-                    st.write("---")
+            st.warning(f"⚠️ {file} - {description} (Optional)")
 
 if __name__ == "__main__":
     main()
